@@ -91,6 +91,13 @@ type HSMessage struct {
 	Device_Type  int
 	Response     []byte
 	Time         time.Time
+
+	// Parsed from position reports.
+	Lat      float64
+	Lng      float64
+	Speed    float64 // mph.
+	Heading  uint16  // degrees.
+	Altitude float64 // feet.
 }
 
 type ResponseVariableParameter struct {
@@ -189,6 +196,7 @@ func (m *HSMessage) parsePositionMessage() {
 		return
 	}
 	lngConverted := float32(int32(lng)) / 100000.0
+	m.Lng = float64(lngConverted)
 
 	// Latitude.
 	lat, err := m.bitstream.ReadBits(32)
@@ -196,24 +204,28 @@ func (m *HSMessage) parsePositionMessage() {
 		return
 	}
 	latConverted := float32(int32(lat)) / 100000.0
+	m.Lat = float64(latConverted)
 
 	// Speed. km/hr.
 	speed, err := m.bitstream.ReadBits(16)
 	if err != nil {
 		return
 	}
+	m.Speed = float64(speed) * 0.621371 // km/hr to mph.
 
 	// Direction.
 	heading, err := m.bitstream.ReadBits(16)
 	if err != nil {
 		return
 	}
+	m.Heading = uint16(heading)
 
 	// Altitude. meters.
 	altitude, err := m.bitstream.ReadBits(16)
 	if err != nil {
 		return
 	}
+	m.Altitude = float64(altitude) * 3.28084 // meters to feet.
 
 	// "odometer speed". km/h
 	odometer_speed, err := m.bitstream.ReadBits(16)
