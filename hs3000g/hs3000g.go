@@ -54,7 +54,7 @@ func SLIP_Decode(msg []byte) ([]byte, error) {
 			} else {
 				return ret, errors.New("Invalid SLIP format.")
 			}
-			i = i + 2
+			i++
 		} else {
 			ret = append(ret, msg[i])
 		}
@@ -371,11 +371,14 @@ func (m *HSMessage) parseMessage() error {
 func NewMessage(m []byte) (*HSMessage, error) {
 	ret := new(HSMessage)
 
+	fmt.Printf("MESSAGE:\n%s\n", hex.Dump(m))
+
 	// Parse SLIP.
 	parsedMsg, err := SLIP_Decode(m)
 	if err != nil {
 		return ret, err
 	}
+	fmt.Printf("MESSAGE (PARSED):\n%s\n", hex.Dump(parsedMsg))
 
 	ret.reader = bytes.NewReader(parsedMsg)
 	if err != nil {
