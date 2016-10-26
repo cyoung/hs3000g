@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"github.com/dgryski/go-bitstream"
 	"io"
+	"strconv"
+	"time"
 )
 
 /*
@@ -88,9 +90,16 @@ type HSMessage struct {
 	VIN          string
 	Device_Type  int
 	Response     []byte
+	Time         time.Time
 }
 
-func (m *HSMessage) constructResponse(msg []byte) {
+type ResponseVariableParameter struct {
+	Type uint16
+	Len  uint16
+	Data []byte
+}
+
+func (m *HSMessage) constructResponse(msg []byte, variableParameters []ResponseVariableParameter) {
 	var b bytes.Buffer
 	responseWriter := bitstream.NewWriter(&b)
 	responseWriter.WriteBits(0x0100, 16) //FIXME: Why?
@@ -106,6 +115,8 @@ func (m *HSMessage) constructResponse(msg []byte) {
 	//		cmdResp = POSITION_RSP
 	case LOGIN_REQ:
 		cmdResp = LOGIN_RSP
+	case POSITION:
+		cmdResp = POSITION_RSP
 	}
 
 	if cmdResp == 0 {
@@ -125,10 +136,96 @@ func (m *HSMessage) constructResponse(msg []byte) {
 		responseWriter.WriteByte(msg[i])
 	}
 
+	// Write the variable parameters.
+	for _, p := range variableParameters {
+		responseWriter.WriteBits(uint64(p.Type), 16)
+		responseWriter.WriteBits(uint64(p.Len), 16)
+		for i := 0; i < len(p.Data); i++ {
+			responseWriter.WriteByte(p.Data[i])
+		}
+	}
+
 	responseWriter.Flush(false)
 
 	m.Response = SLIP_Encode(b.Bytes())
 	fmt.Printf("response: %s\n", hex.Dump(m.Response))
+}
+
+func (m *HSMessage) parsePositionMessage() {
+	// Device status.
+	status, err := m.bitstream.ReadBits(16)
+	if err != nil {
+		return
+	}
+
+	// Position type.
+	positionType, err := m.bitstream.ReadBits(16)
+	if err != nil {
+		return
+	}
+
+	// Position report receiver time.
+	receiverTime := make([]byte, 12)
+	for i := 0; i < 12; i++ {
+		receiverTime[i], err = m.bitstream.ReadByte()
+		if err != nil {
+			return
+		}
+	}
+	// Parse time.
+	yr, _ := strconv.Atoi(string(receiverTime[:2]))
+	mo, _ := strconv.Atoi(string(receiverTime[2:4]))
+	da, _ := strconv.Atoi(string(receiverTime[4:6]))
+	hr, _ := strconv.Atoi(string(receiverTime[6:8]))
+	mn, _ := strconv.Atoi(string(receiverTime[8:10]))
+	sc, _ := strconv.Atoi(string(receiverTime[10:12]))
+	t := time.Date(2000+yr, time.Month(mo), da, hr, mn, sc, 0, time.UTC)
+	m.Time = t
+	fmt.Printf("time=%s\n", t)
+
+	// Longitude.
+	lng, err := m.bitstream.ReadBits(32)
+	if err != nil {
+		return
+	}
+	lngConverted := float32(int32(lng)) / 100000.0
+
+	// Latitude.
+	lat, err := m.bitstream.ReadBits(32)
+	if err != nil {
+		return
+	}
+	latConverted := float32(int32(lat)) / 100000.0
+
+	// Speed. km/hr.
+	speed, err := m.bitstream.ReadBits(16)
+	if err != nil {
+		return
+	}
+
+	// Direction.
+	heading, err := m.bitstream.ReadBits(16)
+	if err != nil {
+		return
+	}
+
+	// Altitude. meters.
+	altitude, err := m.bitstream.ReadBits(16)
+	if err != nil {
+		return
+	}
+
+	// "odometer speed". km/h
+	odometer_speed, err := m.bitstream.ReadBits(16)
+	if err != nil {
+		return
+	}
+
+	fmt.Printf("status=%04x, positionType=%04x, receiverTime=%s, lat=%d (%f), lng=%d (%f), speed=%d, heading=%d, altitude=%d, odometer_speed=%d\n", status, positionType, string(receiverTime), lat, latConverted, lng, lngConverted, speed, heading, altitude, odometer_speed)
+
+	//FIXME: Need some checking to declare a success, but for now always responding "successful login".
+	m.constructResponse([]byte{0}, []ResponseVariableParameter{})
+
 }
 
 func (m *HSMessage) parseLoginMessage() {
@@ -179,7 +276,24 @@ func (m *HSMessage) parseLoginMessage() {
 	}
 
 	//FIXME: Need some checking to declare a success, but for now always responding "successful login".
-	m.constructResponse([]byte{0})
+	params := make([]ResponseVariableParameter, 3)
+
+	// Report interval.
+	params[0].Type = 0x0002
+	params[0].Len = 2
+	params[0].Data = []byte{0, 5} // 5 second report interval.
+
+	// Sleep wake interval.
+	params[1].Type = 0x0003
+	params[1].Len = 2
+	params[1].Data = []byte{0, 10} // 10 minute wake interval.
+
+	// "Angle compensation interval".
+	params[2].Type = 0x0042
+	params[2].Len = 1
+	params[2].Data = []byte{15} // 15 degree angle change.
+
+	m.constructResponse([]byte{0}, params)
 }
 
 func (m *HSMessage) parseMessage() error {
@@ -234,7 +348,7 @@ func (m *HSMessage) parseMessage() error {
 	case LOGIN_REQ:
 		m.parseLoginMessage()
 	case POSITION:
-
+		m.parsePositionMessage()
 	default:
 		fmt.Printf("unknown message type=%04x\n", cmd)
 	}
