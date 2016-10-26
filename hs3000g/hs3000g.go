@@ -139,7 +139,7 @@ func (m *HSMessage) constructResponse(msg []byte, variableParameters []ResponseV
 	// Write the variable parameters.
 	for _, p := range variableParameters {
 		responseWriter.WriteBits(uint64(p.Type), 16)
-		responseWriter.WriteBits(uint64(p.Len), 16)
+		responseWriter.WriteBits(uint64(p.Len+4), 16) // Add 4 to the length for the header: type field and length field.
 		for i := 0; i < len(p.Data); i++ {
 			responseWriter.WriteByte(p.Data[i])
 		}
