@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/dgryski/go-bitstream"
 	"io"
+	"math/rand"
 	"strconv"
 	"time"
 )
@@ -124,6 +125,10 @@ func (m *HSMessage) constructResponse(msg []byte, variableParameters []ResponseV
 		cmdResp = LOGIN_RSP
 	case POSITION:
 		cmdResp = POSITION_RSP
+	case SET_REQ:
+		cmdResp = SET_REQ // Not a response, we're originating this message.
+	case CTRL_REQ:
+		cmdResp = CTRL_REQ // Not a response, we're originating this message.
 	}
 
 	if cmdResp == 0 {
@@ -388,4 +393,42 @@ func NewMessage(m []byte) (*HSMessage, error) {
 
 	ret.parseMessage()
 	return ret, nil
+}
+
+func NewParamsSetMessage() *HSMessage {
+	ret := new(HSMessage)
+
+	ret.Command = SET_REQ
+	ret.SerialNumber = uint32(rand.Int())
+
+	params := make([]ResponseVariableParameter, 3)
+
+	// Report interval.
+	params[0].Type = 0x0002
+	params[0].Len = 2
+	params[0].Data = []byte{0, 5} // 5 second report interval.
+
+	// Sleep wake interval.
+	params[1].Type = 0x0003
+	params[1].Len = 2
+	params[1].Data = []byte{0, 10} // 10 minute wake interval.
+
+	// "Angle compensation interval".
+	params[2].Type = 0x0042
+	params[2].Len = 1
+	params[2].Data = []byte{15} // 15 degree angle change.
+
+	ret.constructResponse([]byte{}, params)
+	return ret
+}
+
+func NewCtrlReq() *HSMessage {
+	ret := new(HSMessage)
+
+	ret.Command = CTRL_REQ
+	ret.SerialNumber = uint32(rand.Int())
+
+	ret.constructResponse([]byte{0}, []ResponseVariableParameter{})
+
+	return ret
 }

@@ -36,11 +36,13 @@ func handleConnection(conn net.Conn) {
 
 func main() {
 
-	z, err := hex.DecodeString("0000004baa0000000000002cdbdc000000313631303236313532313435ff8057ca0040d078000000000116000000010015ffffff0000000000000004a3ff58113a1c0005000a0306000002cbc0")
+	z, err := hex.DecodeString("0000004baa00000000000589a5a5a55a3f0080000000313631303236323334343539ff8057cf0040d07400000000011b000000010015ffffff0000000000000004aeff5811a9bd0005000ac0")
 	if err != nil {
 		fmt.Printf("err: %s\n", err.Error())
 		return
 	}
+
+	fmt.Printf("%d\n", len(z))
 
 	_, err = hs3000g.NewMessage(z)
 	if err != nil {
