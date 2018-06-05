@@ -1,7 +1,7 @@
 package main
 
 import (
-	"./hs3000g"
+	"github.com/cyoung/hs3000g"
 	"bufio"
 	"encoding/hex"
 	"fmt"
